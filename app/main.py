@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from app.config.database import connect_to_mongo, close_mongo_connection
-from app.routers import reports
-from app.middleware.cors import setup_cors
+from config.database import connect_to_mongo, close_mongo_connection
+from routers import reports
+from middleware.cors import setup_cors
 
 
 app = FastAPI(
@@ -14,14 +14,15 @@ setup_cors(app)
 
 @app.on_event("startup")
 async def startup_db_client():
-    connect_to_mongo()
+    await connect_to_mongo()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    close_mongo_connection()
+   await close_mongo_connection()
 
 
 # Include the routers here guys!
+app.include_router(reports.router, prefix="/reports", tags=["reports"])
 
 
 @app.get("/")
