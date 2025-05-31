@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from config.database import get_database
+from schemas.report_schema import CreateIncidentReport
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,39 @@ class ReportService:
         except Exception as e:
             logger.error(f"Error fetching reports: {str(e)}")
             raise
+        
+    def create_report(self, report_data: CreateIncidentReport) -> Dict[str, Any]:
+        try:
+            report_dict = report_data.dict()
+            
+            report_dict["institution_id"] = ObjectId(report_dict["institution_id"])
+            
+            report_dict["assigned_admin"] = None
+            report_dict["linked_case_id"] = None
+            report_dict["status"] = "new"
+            report_dict["created_at"] = datetime.utcnow()
+            report_dict["updated_at"] = datetime.utcnow()
+            
+            result = self.collection.insert_one(report_dict)
+            
+            if result.inserted_id:
+                logger.info(f"Successfully created report with ID: {result.inserted_id}")
+                return {
+                    "id": str(result.inserted_id),
+                    "report_id": report_dict["report_id"],
+                    "status": report_dict["status"],
+                    "created_at": report_dict["created_at"]
+                }
+            else:
+                raise Exception("Failed to insert report into database")
+                
+        except ValueError as e:
+            logger.error(f"Invalid ObjectId format: {str(e)}")
+            raise ValueError("Invalid institution_id format")
+        except Exception as e:
+            logger.error(f"Error creating report: {str(e)}")
+            raise
+
     
     def _build_filter_query(
         self,
