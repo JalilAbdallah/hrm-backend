@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from config.database import get_database
-from schemas.report_schema import CreateIncidentReport
+from schemas.report_schema import CreateIncidentReport, UpdateReportStatus
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,34 @@ class ReportService:
             logger.error(f"Error creating report: {str(e)}")
             raise
 
+    def update_report_status(self, report_id: str, status_data: UpdateReportStatus) -> Dict[str, Any]:
+        try:
+            filter_query = {"report_id": report_id}
+            
+            update_query = {
+                "$set": {
+                    "status": status_data.status,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+            
+            result = self.collection.update_one(filter_query, update_query)
+            
+            if result.matched_count == 0:
+                raise ValueError(f"Report with ID '{report_id}' not found")
+            
+            
+            return {
+                "report_id": report_id,
+                "status": status_data.status,
+                "updated_at": datetime.utcnow()
+            }
+                
+        except Exception as e:
+            logger.error(f"Error updating report status: {str(e)}")
+            raise
+
+    
     
     def _build_filter_query(
         self,

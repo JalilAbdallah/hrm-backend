@@ -65,10 +65,18 @@ class CreateIncidentReport(BaseModel):
     victims: List[Victim] = Field(default_factory=list, description="List of victims")
     evidence: List[Evidence] = Field(default_factory=list, description="List of evidence")
     
+class UpdateReportStatus(BaseModel):
+    status: str = Field(..., description="New status for the report")
 
 class IncidentReportResponse(BaseModel):
     id: str = Field(..., description="Database ID of the created report")
     report_id: str = Field(..., description="Report identifier")
     status: str = Field(..., description="Current status of the report")
     created_at: datetime = Field(..., description="Creation timestamp")
+    message: str = Field(..., description="Success message")
+    
+class UpdateReportResponse(BaseModel):
+    report_id: str = Field(..., description="Report identifier")
+    status: str = Field(..., description="Updated status of the report")
+    updated_at: datetime = Field(..., description="Update timestamp")
     message: str = Field(..., description="Success message")
