@@ -10,40 +10,62 @@ class CaseService:
     def __init__(self):
         self.db = get_database()
         self.collection = self.db.cases
+        self.archived_collection = self.db.archived_cases
 
-    def get_cases(
-        self,
-        status: Optional[str] = None,
-        country: Optional[str] = None,
-        region: Optional[str] = None,
-        date_from: Optional[datetime] = None,
-        date_to: Optional[datetime] = None,
-        skip: int = 0,
-        limit: int = 100
-    ) -> Dict[str, Any]:
+    def _validate_case_id(self, case_id: str) -> None:
+        """Validate ObjectId format and raise ValueError if invalid"""
+        if not ObjectId.is_valid(case_id):
+            logger.error(f"Invalid case ID format: {case_id}")
+            raise ValueError("Invalid case ID format")
+
+    def _query_cases_with_pagination(self, collection, filter_query: Dict[str, Any], skip: int, limit: int) -> Dict[str, Any]:
+        """Query cases from a collection with pagination and return formatted result"""
+        print(f"Querying cases with filter: {filter_query}, skip: {skip}, limit: {limit}")
+        cursor = collection.find(filter_query).skip(skip).limit(limit)
+        cases = [self._serialize_case(case) for case in cursor]
         
-        try:
-            filter_query = self._build_filter_query(
-                status, country, region, date_from, date_to
-            )
-            
-            cursor = self.collection.find(filter_query).skip(skip).limit(limit)
-            cases = [self._serialize_case(case) for case in cursor]
-            
-            total_count = self.collection.count_documents(filter_query)
-            
-            return {
-                "cases": cases,
-                "total_count": total_count,
-                "returned_count": len(cases)
-            }
-        except Exception as e:
-            logger.error(f"Error fetching cases: {str(e)}")
-            raise
+        total_count = collection.count_documents(filter_query)
+        
+        return {
+            "cases": cases,
+            "total_count": total_count,
+            "returned_count": len(cases)
+        }
+
+    def _find_case_by_id(self, collection, case_id: str) -> Optional[Dict[str, Any]]:
+        """Find a case by ID from the specified collection"""
+        case = collection.find_one({"_id": ObjectId(case_id)})
+        return self._serialize_case(case) if case else None
+
+    def _move_case_between_collections(self, source_collection, target_collection, case_id: str, operation_name: str) -> bool:
+        """Move a case from source collection to target collection"""
+        self._validate_case_id(case_id)
+        
+        # Find the case in source collection
+        case_to_move = source_collection.find_one({"_id": ObjectId(case_id)})
+        
+        if not case_to_move:
+            logger.warning(f"No case found to {operation_name} with ID: {case_id}")
+            return False
+
+        # Insert the case into target collection
+        target_collection.insert_one(case_to_move)
+        
+        # Remove the case from source collection
+        result = source_collection.delete_one({"_id": ObjectId(case_id)})
+
+        if result.deleted_count == 0:
+            # If deletion failed, remove from target collection to maintain consistency
+            target_collection.delete_one({"_id": ObjectId(case_id)})
+            logger.error(f"Failed to delete case from source collection during {operation_name}: {case_id}")
+            return False
+        
+        logger.info(f"Successfully {operation_name}d case {case_id}")
+        return True
 
     def _build_filter_query(
         self,
-        status: Optional[str],
+        violation_types: Optional[str], # Changed from violation_type to violation_types
         country: Optional[str],
         region: Optional[str],
         date_from: Optional[datetime],
@@ -52,8 +74,12 @@ class CaseService:
         
         filter_query = {}
         
-        if status:
-            filter_query["status"] = status
+        if violation_types: # Changed from violation_type to violation_types
+            # Assuming violation_types is a comma-separated string of types
+            # Convert to a list and use $all to match documents containing all specified types
+            types_list = [vt.strip() for vt in violation_types.split(',') if vt.strip()]
+            if types_list:
+                filter_query["violation_types"] = {"$all": types_list}
         
         if country:
             filter_query["location.country"] = {
@@ -80,40 +106,67 @@ class CaseService:
     def _serialize_case(self, case: Dict[str, Any]) -> Dict[str, Any]:
         if case is None:
             return None
-        
+
+        def convert_extended_json(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                if "$oid" in obj:
+                    return str(obj["$oid"])  # Convert {"$oid": "..."} to string
+                elif "$date" in obj:
+                    return obj["$date"]  # Already ISO format, use as is
+                return {k: convert_extended_json(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_extended_json(item) for item in obj]
+            elif isinstance(obj, ObjectId):
+                return str(obj)
+            return obj
+
         # Create a copy to avoid modifying the original
-        serialized_case = dict(case)
-    
-        # Convert top-level ObjectId fields
-        for field in ["_id", "created_by"]:
-            if field in serialized_case and serialized_case[field]:
-                if isinstance(serialized_case[field], ObjectId):
-                    serialized_case[field] = str(serialized_case[field])
- 
-        # Convert ObjectIds in source_reports array
+        serialized_case = convert_extended_json(dict(case))
+
+        # Explicit checks for specific fields (optional, for clarity)
+        if "_id" in serialized_case and isinstance(serialized_case["_id"], dict) and "$oid" in serialized_case["_id"]:
+            serialized_case["_id"] = str(serialized_case["_id"]["$oid"])
+        if "created_by" in serialized_case and isinstance(serialized_case["created_by"], dict) and "$oid" in serialized_case["created_by"]:
+            serialized_case["created_by"] = str(serialized_case["created_by"]["$oid"])
         if "source_reports" in serialized_case and serialized_case["source_reports"]:
-            serialized_case["source_reports"] = [
-               str(report_id) for report_id in serialized_case["source_reports"]
-            ]
-        
-        # Convert ObjectIds in history array (if embedded)
+            serialized_case["source_reports"] = [str(report["$oid"]) if isinstance(report, dict) and "$oid" in report else str(report) for report in serialized_case["source_reports"]]
+        if "victims" in serialized_case and serialized_case["victims"]:
+            serialized_case["victims"] = [str(victim["$oid"]) if isinstance(victim, dict) and "$oid" in victim else str(victim) for victim in serialized_case["victims"]]
+        if "updated_by" in serialized_case and isinstance(serialized_case["updated_by"], dict) and "$oid" in serialized_case["updated_by"]:
+            serialized_case["updated_by"] = str(serialized_case["updated_by"]["$oid"])
         if "history" in serialized_case and serialized_case["history"]:
             for history_entry in serialized_case["history"]:
-                if "updated_by" in history_entry and history_entry["updated_by"]:
-                    if isinstance(history_entry["updated_by"], ObjectId):
-                        history_entry["updated_by"] = str(history_entry["updated_by"])
-                    elif isinstance(history_entry["updated_by"], dict) and "$oid" in history_entry["updated_by"]:
-                        history_entry["updated_by"] = str(history_entry["updated_by"]["$oid"])
-    
+                if "updated_by" in history_entry and isinstance(history_entry["updated_by"], dict) and "$oid" in history_entry["updated_by"]:
+                    history_entry["updated_by"] = str(history_entry["updated_by"]["$oid"])
+
+        # print(f"Serialized case: {serialized_case}")  # Debug the full result
         return serialized_case
     
+    def get_cases(
+        self,
+        violation_types: Optional[str] = None, # Changed from violation_type to violation_types
+        country: Optional[str] = None,
+        region: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        
+        try:
+            filter_query = self._build_filter_query(
+                violation_types, country, region, date_from, date_to # Changed from violation_type to violation_types
+            )
+            
+            return self._query_cases_with_pagination(self.collection, filter_query, skip, limit)
+        except Exception as e:
+            logger.error(f"Error fetching cases: {str(e)}")
+            raise
+
     # fetch a case by its ID
     def get_case_by_id(self, case_id: str) -> Optional[Dict[str, Any]]:
-      
         try:
-            case = self.collection.find_one({"_id": ObjectId(case_id)})
-            # Serialize the case before returning
-            return self._serialize_case(case) if case else None
+            return self._find_case_by_id(self.collection, case_id)
         except Exception as e:
             logger.error(f"Error fetching case by ID {case_id}: {str(e)}")
             raise
@@ -122,8 +175,8 @@ class CaseService:
         try:
             # Validate required fields
             required_fields = [
-                "title", "description", "violation_types", "status",
-                "priority", "location", "created_by"
+                "title", "description", "violation_types",
+                "priority", "location"
             ]
             for field in required_fields:
                 if field not in case_data or not case_data[field]:
@@ -146,16 +199,20 @@ class CaseService:
             case_data.setdefault("updated_at", now)
 
             # Generate case_id if not provided
-            if "case_id" not in case_data or not case_data["case_id"]:
-                case_data["case_id"] = self.generate_case_id()
+            number_of_cases = self.collection.count_documents({})
+            number_of_archived_cases = self.archived_collection.count_documents({})
+            year = now.year
+            new_case_id= f"HRM-{year}-{4000+number_of_cases + number_of_archived_cases + 1}"
+            case_data["case_id"] = new_case_id
 
+            case_data["status"] = "new"  # Default status for new cases
             # Insert the case
             result = self.collection.insert_one(case_data)
             inserted_case_id = str(result.inserted_id)
 
             # Create case_status_history document
             history_entry = self.build_case_history_entry(
-                status=case_data["status"],
+                status="new",
                 updated_by=case_data["created_by"]
             )
             self.db.case_status_history.insert_one({
@@ -169,8 +226,6 @@ class CaseService:
         except Exception as e:
             logger.error(f"Error creating case: {str(e)}")
             raise
-
-
     
     # modifiy the case_status_history collection to store the history of case status changes
     def build_case_history_entry(self, status: str, updated_by: str) -> Dict[str, Any]:
@@ -180,17 +235,45 @@ class CaseService:
             "updated_by": ObjectId(updated_by) if isinstance(updated_by, str) else updated_by
         }
     
+    def get_case_status_history(self, case_id: str) -> List[Dict[str, Any]]:
+        try:
+        
+            # Fetch the status history for the case
+            history = self.db.case_status_history.find_one({"case_id": case_id})
+            if not history:
+                logger.warning(f"No status history found for case ID: {case_id}")
+                return []
+
+            # Convert ObjectId to string for serialization
+            for entry in history.get("history", []):
+                if "updated_by" in entry and isinstance(entry["updated_by"], ObjectId):
+                    entry["updated_by"] = str(entry["updated_by"])
+
+            return history.get("history", [])
+        except Exception as e:
+            logger.error(f"Error fetching case status history for {case_id}: {str(e)}")
+            raise
+
     def update_case(self, case_id: str, update_data: Dict[str, Any], updated_by: str) -> Optional[Dict[str, Any]]:
             try:
                 # Validate case_id
-                if not ObjectId.is_valid(case_id):
-                    logger.error(f"Invalid case ID format: {case_id}")
-                    raise ValueError("Invalid case ID format")
+                self._validate_case_id(case_id)
 
                 # Validate update_data is not empty
                 if not update_data:
                     logger.error("No fields provided for case update")
                     raise ValueError("No fields provided for update")
+
+                # --- NEW: Field restriction ---
+                allowed_fields = {"status", "victims"}
+                for key in update_data.keys():
+                    if key not in allowed_fields:
+                        raise ValueError(f"Field '{key}' cannot be updated. Only 'status' and 'victims' are allowed.")
+
+                # --- NEW: updated_by requirement for status change ---
+                if "status" in update_data:
+                    if not updated_by:
+                        raise ValueError("updated_by is required when updating status.")
 
                 # Fetch the existing case
                 existing_case = self.collection.find_one({"_id": ObjectId(case_id)})
@@ -198,43 +281,78 @@ class CaseService:
                     logger.error(f"Case not found: {case_id}")
                     raise ValueError("Case not found")
 
-                # Convert source_reports IDs to ObjectId if provided
-                if "source_reports" in update_data:
+                fields_to_set = {}
+
+                # Process 'victims' if present in update_data
+                if "victims" in update_data:
+                    victims_list = update_data["victims"]
+                    if not isinstance(victims_list, list):
+                        raise ValueError("'victims' must be a list.")
                     try:
-                        update_data["source_reports"] = [
-                            ObjectId(r) if isinstance(r, str) and ObjectId.is_valid(r) else r
-                            for r in update_data["source_reports"]
-                        ]
+                        processed_victims = []
+                        for v_id in victims_list:
+                            if isinstance(v_id, str) and ObjectId.is_valid(v_id):
+                                processed_victims.append(ObjectId(v_id))
+                            elif isinstance(v_id, ObjectId): # Already an ObjectId
+                                processed_victims.append(v_id)
+                            else:
+                                raise ValueError(f"Invalid ObjectId format in victims list: {v_id}")
+                        fields_to_set["victims"] = processed_victims
+                    except ValueError as ve:
+                        logger.error(f"Error processing victim IDs: {str(ve)}")
+                        raise # Re-raise the specific ValueError
                     except Exception as e:
-                        logger.error(f"Invalid source_reports ID: {str(e)}")
-                        raise ValueError(f"Invalid source_reports ID: {str(e)}")
-
-                # Convert updated_by to ObjectId if it’s a valid ObjectId string
-                try:
-                    update_data["updated_by"] = ObjectId(updated_by) if ObjectId.is_valid(updated_by) else updated_by
-                except Exception as e:
-                    logger.error(f"Invalid updated_by ID: {str(e)}")
-                    raise ValueError(f"Invalid updated_by ID: {str(e)}")
-
+                        logger.error(f"Invalid victim ID in victims list: {str(e)}")
+                        raise ValueError(f"Invalid victim ID in victims list: {str(e)}")
+                
+                # Process 'status' if present in update_data
+                if "status" in update_data:
+                    fields_to_set["status"] = update_data["status"]
+                    
                 # Set updated_at timestamp
-                update_data["updated_at"] = datetime.utcnow()
+                fields_to_set["updated_at"] = datetime.utcnow()
 
-                # Update the case with partial data
+                # Convert and add updated_by (the function parameter) to the document update, if provided
+                if updated_by:
+                    try:
+                        if ObjectId.is_valid(updated_by):
+                            fields_to_set["updated_by"] = ObjectId(updated_by)
+                        else:
+                            # If updated_by is provided but not a valid ObjectId string
+                            raise ValueError(f"Invalid ObjectId format for updated_by parameter: {updated_by}")
+                    except ValueError as ve: # Catch our ValueError or ObjectId's
+                        logger.error(f"Error processing updated_by parameter: {str(ve)}")
+                        raise
+                    except Exception as e: # Catch other BSON errors
+                        logger.error(f"Invalid updated_by ID for document update: {str(e)}")
+                        raise ValueError(f"Invalid updated_by ID for document update: {str(e)}")
+                
+                # Perform the update only if there's something to set
+                if not fields_to_set:
+                    logger.info(f"No fields to update for case {case_id} after processing. Skipping database update.")
+                    return self.get_case_by_id(case_id) # Return current state
+
                 result = self.collection.update_one(
                     {"_id": ObjectId(case_id)},
-                    {"$set": update_data}
+                    {"$set": fields_to_set}
                 )
 
                 # If status changed, update case_status_history
                 if "status" in update_data and update_data["status"] != existing_case.get("status"):
+                    # updated_by (param) is guaranteed to be present if status is in update_data due to earlier check
                     history_entry = self.build_case_history_entry(update_data["status"], updated_by)
                     self.db.case_status_history.update_one(
-                        {"case_id": existing_case.get('case_id')},  # Use _id instead of case_id
+                        {"case_id": existing_case.get('case_id')},  # Use case_id
                         {"$push": {"history": history_entry}},
                         upsert=True
                     )
                     
                 # Return the updated case
+                if result.modified_count == 0:
+                    logger.warning(f"No changes were made to case {case_id}")
+                    return self.get_case_by_id(case_id)
+                
+                logger.info(f"Successfully updated case {case_id}")
                 return self.get_case_by_id(case_id)
 
             except ValueError as e:
@@ -244,5 +362,57 @@ class CaseService:
                 logger.error(f"Error updating case {case_id}: {str(e)}")
                 raise
         
-
+    def archive_case(self, case_id: str) -> bool:
+        try:
+            return self._move_case_between_collections(
+                self.collection, 
+                self.archived_collection, 
+                case_id, 
+                "archive"
+            )
+        except Exception as e:
+            logger.error(f"Error archiving case {case_id}: {str(e)}")
+            raise
+    
+    def get_archived_cases(
+        self,
+        violation_types: Optional[str] = None, # Changed from violation_type to violation_types
+        country: Optional[str] = None,
+        region: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        skip: int = 0,
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        """Get archived cases with the same filtering options as regular cases"""
+        try:
+            filter_query = self._build_filter_query(
+                violation_types, country, region, date_from, date_to # Changed from violation_type to violation_types
+            )
+            
+            return self._query_cases_with_pagination(self.archived_collection, filter_query, skip, limit)
+        except Exception as e:
+            logger.error(f"Error fetching archived cases: {str(e)}")
+            raise
+    
+    def get_archived_case_by_id(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch an archived case by its ID"""
+        try:
+            return self._find_case_by_id(self.archived_collection, case_id)
+        except Exception as e:
+            logger.error(f"Error fetching archived case by ID {case_id}: {str(e)}")
+            raise
+    
+    def restore_case(self, case_id: str) -> bool:
+        """Restore a case from archived_cases back to cases collection"""
+        try:
+            return self._move_case_between_collections(
+                self.archived_collection, 
+                self.collection, 
+                case_id, 
+                "restore"
+            )
+        except Exception as e:
+            logger.error(f"Error restoring case {case_id}: {str(e)}")
+            raise
 

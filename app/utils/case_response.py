@@ -20,7 +20,7 @@ def build_paginated_response(
             "has_prev": skip > 0
         },
         "filters_applied": {
-            "status": filters.status,
+            "violation_types": filters.violation_types, # Changed from status to violation_types
             "country": filters.country,
             "region": filters.region,
             "date_from": filters.date_from,
