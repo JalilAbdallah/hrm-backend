@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status as HTTPStatus, Depends
 from datetime import datetime
 from services.report_service import ReportService
-from schemas.report_schema import ReportFilters
+from schemas.report_schema import ReportFilters, CreateIncidentReport, IncidentReportResponse, UpdateReportResponse, UpdateReportStatus
 from utils.response_utils import build_paginated_response
 
 router = APIRouter()
@@ -46,4 +46,60 @@ async def list_reports(
         raise HTTPException(
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while fetching reports"
+        )
+        
+@router.post("/", status_code=HTTPStatus.HTTP_201_CREATED)
+async def create_incident_report(
+    report_data: CreateIncidentReport,
+    report_service: ReportService = Depends(get_report_service)
+):
+    try:
+        result = report_service.create_report(report_data)
+        
+        return IncidentReportResponse(
+            id=result["id"],
+            report_id=result["report_id"],
+            status=result["status"],
+            created_at=result["created_at"],
+            message="Incident report created successfully"
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while creating report"
+        )
+        
+@router.patch("/{report_id}", response_model=UpdateReportResponse, status_code=HTTPStatus.HTTP_200_OK)
+async def update_report_status(
+    report_id: str,
+    status_data: UpdateReportStatus,
+    report_service: ReportService = Depends(get_report_service)
+):
+    try:
+        result = report_service.update_report_status(report_id, status_data)
+        
+        return UpdateReportResponse(
+            report_id=result["report_id"],
+            status=result["status"],
+            updated_at=result["updated_at"],
+            message="Report status updated successfully"
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while updating report status"
         )

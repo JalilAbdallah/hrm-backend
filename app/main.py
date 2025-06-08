@@ -3,6 +3,7 @@ from config.database import connect_to_mongo, close_mongo_connection
 from routers import reports
 from routers import cases
 from middleware.cors import setup_cors
+from routers.individuals import router as individuals_router
 
 
 app = FastAPI(
@@ -24,7 +25,10 @@ async def shutdown_db_client():
 
 # Include the routers here guys!
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
+app.include_router(individuals_router, prefix="/victims", tags=["individuals"])
+
 app.include_router(cases.router, prefix="/cases", tags=["cases"])
+
 
 
 @app.get("/")
