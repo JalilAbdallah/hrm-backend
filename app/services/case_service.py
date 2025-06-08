@@ -122,24 +122,6 @@ class CaseService:
 
         # Create a copy to avoid modifying the original
         serialized_case = convert_extended_json(dict(case))
-
-        # Explicit checks for specific fields (optional, for clarity)
-        if "_id" in serialized_case and isinstance(serialized_case["_id"], dict) and "$oid" in serialized_case["_id"]:
-            serialized_case["_id"] = str(serialized_case["_id"]["$oid"])
-        if "created_by" in serialized_case and isinstance(serialized_case["created_by"], dict) and "$oid" in serialized_case["created_by"]:
-            serialized_case["created_by"] = str(serialized_case["created_by"]["$oid"])
-        if "source_reports" in serialized_case and serialized_case["source_reports"]:
-            serialized_case["source_reports"] = [str(report["$oid"]) if isinstance(report, dict) and "$oid" in report else str(report) for report in serialized_case["source_reports"]]
-        if "victims" in serialized_case and serialized_case["victims"]:
-            serialized_case["victims"] = [str(victim["$oid"]) if isinstance(victim, dict) and "$oid" in victim else str(victim) for victim in serialized_case["victims"]]
-        if "updated_by" in serialized_case and isinstance(serialized_case["updated_by"], dict) and "$oid" in serialized_case["updated_by"]:
-            serialized_case["updated_by"] = str(serialized_case["updated_by"]["$oid"])
-        if "history" in serialized_case and serialized_case["history"]:
-            for history_entry in serialized_case["history"]:
-                if "updated_by" in history_entry and isinstance(history_entry["updated_by"], dict) and "$oid" in history_entry["updated_by"]:
-                    history_entry["updated_by"] = str(history_entry["updated_by"]["$oid"])
-
-        # print(f"Serialized case: {serialized_case}")  # Debug the full result
         return serialized_case
     
     def get_cases(
@@ -192,6 +174,12 @@ class CaseService:
                     ObjectId(r) if isinstance(r, str) else r
                     for r in case_data["source_reports"]
                 ]
+            if "victims" in case_data:
+                case_data["victims"] = [
+                    ObjectId(v) if isinstance(v, str) else v
+                    for v in case_data["victims"]
+                ]
+            
 
             # Set timestamps
             now = datetime.utcnow()
