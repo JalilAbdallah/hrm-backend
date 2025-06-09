@@ -10,6 +10,7 @@ def get_report_service() -> ReportService:
     return ReportService()
 
 @router.get("/")
+
 async def list_reports(
     filters: ReportFilters = Depends(),
     report_service: ReportService = Depends(get_report_service)
