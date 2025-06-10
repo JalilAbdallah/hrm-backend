@@ -18,7 +18,7 @@ def create_victim(
     victim_id = service.create_victim(victim.dict())
     return {"id": victim_id}
 
-@router.get("/waited/", response_model=List[WaitedIndividualOut])
+@router.get("/waited", response_model=List[WaitedIndividualOut])
 def get_waited_individuals(service: VictimService = Depends(get_victim_service)):
     return service.get_waited_individuals()
 
