@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from bson import ObjectId
+from bson import ObjectId, errors
 from config.database import get_database
 from datetime import datetime
 import logging
@@ -85,3 +85,18 @@ class VictimService:
         except Exception as e:
             logger.error(f"Error fetching waited individuals: {e}")
             raise
+
+    def update_waited_victims(self, waited_id: str, victims: List[dict]) -> bool:
+        try:
+            obj_id = ObjectId(waited_id)
+        except errors.InvalidId:
+            logger.error(f"Invalid ObjectId: {waited_id}")
+            return False
+
+        result = self.db.waited_individuals.update_one(
+            {"_id": obj_id},
+            {"$set": {"victims": victims}}
+        )
+
+        logger.info(f"Matched: {result.matched_count}, Modified: {result.modified_count}")
+        return result.matched_count > 0

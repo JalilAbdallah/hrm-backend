@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from schemas.individual_schema import VictimCreate, VictimOut, VictimOutSafe, VictimUpdateRisk
-from schemas.waited_individual_schema import WaitedIndividualOut
+from schemas.waited_individual_schema import WaitedIndividualOut, UpdateWaitedVictimsRequest
 from services.individuals_service import VictimService
 from utils.conversion import convert_objectid_to_str
 
@@ -10,6 +10,22 @@ def get_victim_service() -> VictimService:
 
 router = APIRouter()
 
+
+@router.get("/waited", response_model=List[WaitedIndividualOut])
+def get_waited_individuals(service: VictimService = Depends(get_victim_service)):
+    return service.get_waited_individuals()
+
+@router.patch("/waited/{waited_id}")
+def update_waited_victims(
+    waited_id: str,
+    req: UpdateWaitedVictimsRequest,
+    service: VictimService = Depends(get_victim_service)
+):
+    success = service.update_waited_victims(waited_id, [v.dict() for v in req.victims])
+    if not success:
+        raise HTTPException(status_code=404, detail="Waited record not found or unchanged")
+    return {"message": "Victims list updated"}
+
 @router.post("/")
 def create_victim(
     victim: VictimCreate,
@@ -17,10 +33,6 @@ def create_victim(
 ):
     victim_id = service.create_victim(victim.dict())
     return {"id": victim_id}
-
-@router.get("/waited", response_model=List[WaitedIndividualOut])
-def get_waited_individuals(service: VictimService = Depends(get_victim_service)):
-    return service.get_waited_individuals()
 
 @router.get("/case/{case_id}")
 def get_victims_by_case(
