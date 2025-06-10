@@ -4,6 +4,7 @@ from config.database import get_database
 from datetime import datetime
 import logging
 from utils.conversion import convert_objectid_to_str
+from schemas.waited_individual_schema import WaitedIndividualOut
 
 logger = logging.getLogger(__name__)
 
@@ -65,4 +66,22 @@ class VictimService:
             return [convert_objectid_to_str(v) for v in victims]
         except Exception as e:
             logger.error(f"Error fetching victims by case: {e}")
+            raise
+
+    def get_waited_individuals(self) -> list[WaitedIndividualOut]:
+        try:
+            waited_collection = self.db.waited_individuals
+            individuals = waited_collection.find()
+
+            results = []
+            for ind in individuals:
+                ind["_id"] = str(ind["_id"])
+                ind["case_id"] = str(ind["case_id"])
+                ind["id"] = ind.pop("_id")
+                results.append(WaitedIndividualOut(**ind))
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Error fetching waited individuals: {e}")
             raise
