@@ -1,9 +1,10 @@
 from typing import Optional, List, Dict, Any
-from bson import ObjectId
+from bson import ObjectId, errors
 from config.database import get_database
 from datetime import datetime
 import logging
 from utils.conversion import convert_objectid_to_str
+from schemas.waited_individual_schema import WaitedIndividualOut
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,43 @@ class VictimService:
             victims = self.collection.find({
                 "cases_involved": ObjectId(case_id)
             })
+
+
+
             return [convert_objectid_to_str(v) for v in victims]
         except Exception as e:
             logger.error(f"Error fetching victims by case: {e}")
             raise
+
+    def get_waited_individuals(self) -> list[WaitedIndividualOut]:
+        try:
+            waited_collection = self.db.waited_individuals
+            individuals = waited_collection.find()
+
+            results = []
+            for ind in individuals:
+                ind["_id"] = str(ind["_id"])
+                ind["case_id"] = str(ind["case_id"])
+                ind["id"] = ind.pop("_id")
+                results.append(WaitedIndividualOut(**ind))
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Error fetching waited individuals: {e}")
+            raise
+
+    def update_waited_victims_by_case(self, case_id: str, victims: List[dict]) -> bool:
+        try:
+            from bson import ObjectId
+            obj_case_id = ObjectId(case_id)
+        except Exception as e:
+            logger.error(f"Invalid case_id: {case_id} — {e}")
+            return False
+
+        result = self.db.waited_individuals.update_one(
+            {"case_id": obj_case_id},
+            {"$set": {"victims": victims}}
+        )
+        return result.matched_count > 0
+
