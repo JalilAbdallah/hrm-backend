@@ -53,9 +53,10 @@ class AuthService:
             }
 
             return {
+                'success': True,
                 'message': 'Login successful',
                 'token': token,
-                'user': user_data
+                'user_data': user_data
             }
 
         except ValueError as e:
