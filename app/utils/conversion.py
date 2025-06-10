@@ -1,14 +1,25 @@
 from datetime import datetime
 from bson import ObjectId
 
+
 def convert_objectid_to_str(victim: dict):
-    victim["id"] = str(victim.pop("_id", None)) if "_id" in victim else None
+    _id = victim.get("_id")
+    print("id: " + str(_id))
+    if _id:
+        victim["id"] = str(_id)
+    else:
+        victim["id"] = None
+
+    victim.pop("_id", None)
 
     def parse_datetime(date_str: str):
-        if date_str:
+        if date_str and isinstance(date_str, str):
             if "(" in date_str:
                 date_str = date_str.split(" (")[0]
-            return datetime.strptime(date_str.strip(), "%a %b %d %Y %H:%M:%S GMT%z")
+            try:
+                return datetime.strptime(date_str.strip(), "%a %b %d %Y %H:%M:%S GMT%z")
+            except Exception:
+                return date_str
         return None
 
     if isinstance(victim.get("created_at"), str):

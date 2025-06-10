@@ -63,6 +63,9 @@ class VictimService:
             victims = self.collection.find({
                 "cases_involved": ObjectId(case_id)
             })
+
+
+
             return [convert_objectid_to_str(v) for v in victims]
         except Exception as e:
             logger.error(f"Error fetching victims by case: {e}")
@@ -86,17 +89,17 @@ class VictimService:
             logger.error(f"Error fetching waited individuals: {e}")
             raise
 
-    def update_waited_victims(self, waited_id: str, victims: List[dict]) -> bool:
+    def update_waited_victims_by_case(self, case_id: str, victims: List[dict]) -> bool:
         try:
-            obj_id = ObjectId(waited_id)
-        except errors.InvalidId:
-            logger.error(f"Invalid ObjectId: {waited_id}")
+            from bson import ObjectId
+            obj_case_id = ObjectId(case_id)
+        except Exception as e:
+            logger.error(f"Invalid case_id: {case_id} — {e}")
             return False
 
         result = self.db.waited_individuals.update_one(
-            {"_id": obj_id},
+            {"case_id": obj_case_id},
             {"$set": {"victims": victims}}
         )
-
-        logger.info(f"Matched: {result.matched_count}, Modified: {result.modified_count}")
         return result.matched_count > 0
+
