@@ -2,11 +2,10 @@ from fastapi import APIRouter, HTTPException, status as HTTPStatus, Depends
 from datetime import datetime
 from services.report_service import ReportService
 from schemas.report_schema import ReportFilters, CreateIncidentReport, IncidentReportResponse, UpdateReportResponse, UpdateReportStatus
-from utils.response_utils import build_paginated_response
 
 router = APIRouter()
 
-def get_report_service() -> ReportService:
+def get_report_service():
     return ReportService()
 
 @router.get("/")
@@ -31,11 +30,9 @@ async def list_reports(
             city=filters.city,
             date_from=date_from,
             date_to=date_to,
-            skip=filters.skip,
-            limit=filters.limit
         )
         
-        return build_paginated_response(data, filters)
+        return data
         
     except ValueError as e:
         raise HTTPException(

@@ -3,22 +3,12 @@ from typing import Optional, List
 from datetime import datetime
 
 class ReportFilters(BaseModel):
-    status: Optional[str] = Field(None, description="Filter by report status")
-    country: Optional[str] = Field(None, description="Filter by country")
-    city: Optional[str] = Field(None, description="Filter by city")
-    date_from: Optional[str] = Field(None, description="Filter from date (YYYY-MM-DD)")
-    date_to: Optional[str] = Field(None, description="Filter to date (YYYY-MM-DD)")
-    skip: int = Field(0, ge=0, description="Number of reports to skip")
-    limit: int = Field(100, ge=1, le=500, description="Maximum reports to return")
-    
-    @validator('status')
-    def validate_status(cls, v):
-        if v is not None:
-            valid_statuses = ["new", "open", "closed"]
-            if v not in valid_statuses:
-                raise ValueError(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
-        return v
-    
+    status: Optional[str] = Field(None)
+    country: Optional[str] = Field(None)
+    city: Optional[str] = Field(None)
+    date_from: Optional[str] = Field(None)
+    date_to: Optional[str] = Field(None)
+        
     @validator('date_from', 'date_to')
     def validate_date_format(cls, v):
         if v is not None:
@@ -29,54 +19,53 @@ class ReportFilters(BaseModel):
         return v
 
 class Coordinates(BaseModel):
-    type: str = Field(default="Point", description="GeoJSON type")
-    coordinates: List[float] = Field(..., description="[longitude, latitude]")
+    type: str = Field(default="Point")
+    coordinates: List[float] = Field(...)
 
 class Location(BaseModel):
-    country: str = Field(..., description="Country where incident occurred")
-    city: str = Field(..., description="City where incident occurred")
-    coordinates: Coordinates = Field(..., description="Geographic coordinates")
+    country: str = Field(...)
+    city: str = Field(...)
+    coordinates: Coordinates = Field(...)
 
 class IncidentDetails(BaseModel):
-    title: str = Field(..., description="Brief title of the incident")
-    description: str = Field(..., description="Detailed description of the incident")
-    date_occurred: datetime = Field(..., description="When the incident occurred")
-    location: Location = Field(..., description="Location details")
-    violation_types: List[str] = Field(..., description="Types of violations")
-    estimated_victims: int = Field(0, ge=0, description="Estimated number of victims")
+    title: str = Field(...)
+    description: str = Field(...)
+    date_occurred: datetime = Field(...)
+    location: Location = Field(...)
+    violation_types: List[str] = Field(...)
+    estimated_victims: int = Field(0, ge=0)
 
 class Victim(BaseModel):
-    name: str = Field(..., description="Name of the victim")
-    occupation: str = Field(..., description="Occupation of the victim")
-    gender: str = Field(..., description="Gender of the victim")
-    age: int = Field(..., ge=0, le=150, description="Age of the victim")
+    name: str = Field(...)
+    occupation: str = Field(...)
+    gender: str = Field(...)
+    age: int = Field(..., ge=0, le=150)
 
 class Evidence(BaseModel):
-    type: str = Field(..., description="Type of evidence (photo, video, document, etc.)")
-    filename: str = Field(..., description="Original filename")
-    url: str = Field(..., description="URL path to the evidence file")
-    description: Optional[str] = Field(None, description="Description of the evidence")
+    type: str = Field(...)
+    filename: str = Field(...)
+    url: str = Field(...)
+    description: Optional[str] = Field(None)
 
 class CreateIncidentReport(BaseModel):
-    report_id: str = Field(..., description="Unique report identifier")
-    institution_id: str = Field(..., description="ID of the reporting institution")
-    anonymous: bool = Field(False, description="Whether the report is anonymous")
-    incident_details: IncidentDetails = Field(..., description="Details of the incident")
-    victims: List[Victim] = Field(default_factory=list, description="List of victims")
-    evidence: List[Evidence] = Field(default_factory=list, description="List of evidence")
+    institution_id: str = Field(...)
+    anonymous: bool = Field(False)
+    incident_details: IncidentDetails = Field(...)
+    victims: List[Victim] = Field(default_factory=list)
+    evidence: List[Evidence] = Field(default_factory=list)
     
 class UpdateReportStatus(BaseModel):
-    status: str = Field(..., description="New status for the report")
+    status: str = Field(...)
 
 class IncidentReportResponse(BaseModel):
-    id: str = Field(..., description="Database ID of the created report")
-    report_id: str = Field(..., description="Report identifier")
-    status: str = Field(..., description="Current status of the report")
-    created_at: datetime = Field(..., description="Creation timestamp")
-    message: str = Field(..., description="Success message")
-    
+    id: str = Field(...)
+    report_id: str = Field(...)
+    status: str = Field(...)
+    created_at: datetime = Field(...)
+    message: str = Field(...)
+
 class UpdateReportResponse(BaseModel):
-    report_id: str = Field(..., description="Report identifier")
-    status: str = Field(..., description="Updated status of the report")
-    updated_at: datetime = Field(..., description="Update timestamp")
-    message: str = Field(..., description="Success message")
+    report_id: str = Field(...)
+    status: str = Field(...)
+    updated_at: datetime = Field(...)
+    message: str = Field(...)

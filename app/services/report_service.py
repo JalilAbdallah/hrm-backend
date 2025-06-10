@@ -19,15 +19,13 @@ class ReportService:
         city: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
-        skip: int = 0,
-        limit: int = 100
     ) -> Dict[str, Any]:
         try:
             filter_query = self._build_filter_query(
                 status, country, city, date_from, date_to
             )
-            
-            cursor = self.collection.find(filter_query).skip(skip).limit(limit)
+
+            cursor = self.collection.find(filter_query)
             reports = [self._serialize_report(report) for report in cursor]
             
             total_count = self.collection.count_documents(filter_query)
@@ -47,6 +45,12 @@ class ReportService:
             
             report_dict["institution_id"] = ObjectId(report_dict["institution_id"])
             
+            count = self.collection.count_documents({})
+            year = datetime.utcnow().year
+            sequence = count + 1
+            report_id = f"IR-{year}-{sequence:04d}"
+            report_dict["report_id"] = report_id
+
             report_dict["assigned_admin"] = None
             report_dict["linked_case_id"] = None
             report_dict["status"] = "new"
@@ -56,7 +60,6 @@ class ReportService:
             result = self.collection.insert_one(report_dict)
             
             if result.inserted_id:
-                logger.info(f"Successfully created report with ID: {result.inserted_id}")
                 return {
                     "id": str(result.inserted_id),
                     "report_id": report_dict["report_id"],
