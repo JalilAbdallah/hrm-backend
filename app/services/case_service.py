@@ -188,6 +188,7 @@ class CaseService:
             raise
     
     def create_case(self, case_data: Dict[str, Any]) -> Dict[str, Any]:
+        print(f"Creating case with data: {case_data}")
         try:
             # Validate required fields
             required_fields = [
@@ -198,21 +199,32 @@ class CaseService:
                 if field not in case_data or not case_data[field]:
                     raise ValueError(f"Missing required field: {field}")
             if "country" not in case_data["location"]:
-                raise ValueError("Missing required field: location.country")
-
+                raise ValueError("Missing required field: location.country")            
             # Convert IDs
             if isinstance(case_data["created_by"], str):
                 case_data["created_by"] = ObjectId(case_data["created_by"])
+            
+            # Process source_reports using helper function (handles single item or array)
             if "source_reports" in case_data:
-                case_data["source_reports"] = [
-                    ObjectId(r) if isinstance(r, str) else r
-                    for r in case_data["source_reports"]
-                ]
+                try:
+                    case_data["source_reports"] = self._process_object_id_array(case_data["source_reports"], "source_reports")
+                except ValueError as ve:
+                    logger.error(f"Error processing source report IDs: {str(ve)}")
+                    raise
+                except Exception as e:
+                    logger.error(f"Invalid source report ID in source_reports list: {str(e)}")
+                    raise ValueError(f"Invalid source report ID in source_reports list: {str(e)}")
+            
+            # Process victims using helper function (handles single item or array)
             if "victims" in case_data:
-                case_data["victims"] = [
-                    ObjectId(v) if isinstance(v, str) else v
-                    for v in case_data["victims"]
-                ]
+                try:
+                    case_data["victims"] = self._process_object_id_array(case_data["victims"], "victims")
+                except ValueError as ve:
+                    logger.error(f"Error processing victim IDs: {str(ve)}")
+                    raise
+                except Exception as e:
+                    logger.error(f"Invalid victim ID in victims list: {str(e)}")
+                    raise ValueError(f"Invalid victim ID in victims list: {str(e)}")
             
 
             # Set timestamps
@@ -396,6 +408,9 @@ class CaseService:
         violation_types: Optional[str] = None, # Changed from violation_type to violation_types
         country: Optional[str] = None,
         region: Optional[str] = None,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        search: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         skip: int = 0,
@@ -404,7 +419,7 @@ class CaseService:
         """Get archived cases with the same filtering options as regular cases"""
         try:
             filter_query = self._build_filter_query(
-                violation_types, country, region, date_from, date_to # Changed from violation_type to violation_types
+                violation_types, country, region, date_from, date_to, status, priority, search
             )
             
             return self._query_cases_with_pagination(self.archived_collection, filter_query, skip, limit)

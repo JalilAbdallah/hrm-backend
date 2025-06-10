@@ -294,11 +294,11 @@ This is a flexible dictionary used when creating a new case.
 
 **Optional Fields:**
 *   `status` (string, defaults to "new"): The initial status of the case.
-*   `source_reports` (array of strings, MongoDB ObjectIds): IDs of source reports linked to this case.
-*   `victims` (array of strings, MongoDB ObjectIds): IDs of individuals identified as victims.
+*   `source_reports` (string or array of strings, MongoDB ObjectIds): ID(s) of source reports linked to this case. Can be a single ObjectId string or an array of ObjectId strings.
+*   `victims` (string or array of strings, MongoDB ObjectIds): ID(s) of individuals identified as victims. Can be a single ObjectId string or an array of ObjectId strings.
 *   Any other relevant fields for the case.
 
-**Example `case_data` for `POST /`:**
+**Example `case_data` for `POST /` (with arrays):**
 ```json
 {
     "title": "Unlawful Arrest and Detention of Activist",
@@ -313,6 +313,24 @@ This is a flexible dictionary used when creating a new case.
     "created_by": "60d5ecf8b392f8a7b8c4d5a0",
     "source_reports": ["60d5ecf8b392f8a7b8c4d5b1", "60d5ecf8b392f8a7b8c4d5b2"],
     "victims": ["60d5ecf8b392f8a7b8c4d5c3"]
+}
+```
+
+**Example `case_data` for `POST /` (with single values):**
+```json
+{
+    "title": "Individual Report Case",
+    "description": "Case created from a single incident report.",
+    "violation_types": ["torture"],
+    "priority": "high",
+    "location": {
+        "country": "Freedonia",
+        "region": "South Province",
+        "city": "Border Town"
+    },
+    "created_by": "60d5ecf8b392f8a7b8c4d5a0",
+    "source_reports": "60d5ecf8b392f8a7b8c4d5b1",
+    "victims": "60d5ecf8b392f8a7b8c4d5c3"
 }
 ```
 
