@@ -23,9 +23,12 @@ Visualizations can be generated based on the data returned by these endpoints. F
 *   **Endpoint:** `GET /`
 *   **Description:** Retrieves a paginated list of active cases. Supports filtering by various criteria.
 *   **URL Parameters (Query Parameters):**
-    *   `violation_type` (optional, string): Filter cases by a comma-separated list of violation types (e.g., "torture,illegal detention"). Cases matching all specified types will be returned.
+    *   `violation_types` (optional, string): Filter cases by a comma-separated list of violation types (e.g., "torture,illegal detention"). Cases matching all specified types will be returned.
+    *   `status` (optional, string): Filter cases by status (e.g., "open", "closed", "under_investigation").
     *   `country` (optional, string): Filter cases by country.
     *   `region` (optional, string): Filter cases by region.
+    *   `priority` (optional, string): Filter cases by priority level (e.g., "low", "medium", "high").
+    *   `search` (optional, string): Search term for case title or description.
     *   `date_from` (optional, string, `YYYY-MM-DD`): Filter cases created on or after this date.
     *   `date_to` (optional, string, `YYYY-MM-DD`): Filter cases created on or before this date.
     *   `skip` (optional, integer, default: 0): Number of cases to skip for pagination.
@@ -67,11 +70,13 @@ Visualizations can be generated based on the data returned by these endpoints. F
             "returned_count": 1,
             "has_next": false,
             "has_prev": false
-        },
-        "filters_applied": {
-            "violation_type": "torture,illegal detention",
+        },        "filters_applied": {
+            "violation_types": "torture,illegal detention",
+            "status": "open",
             "country": "CountryX",
             "region": null,
+            "priority": "high",
+            "search": null,
             "date_from": "2023-01-01",
             "date_to": "2023-12-31"
         }
@@ -125,7 +130,7 @@ Visualizations can be generated based on the data returned by these endpoints. F
 ### 4. Update Existing Case
 
 *   **Endpoint:** `PATCH /{case_id}`
-*   **Description:** Updates an existing case. Allows partial updates. Currently, only `status` and `victims` fields can be updated.
+*   **Description:** Updates an existing case. Allows partial updates. Can update multiple fields including status, victims, and source_reports.
 *   **URL Parameters (Path Parameter):**
     *   `case_id` (required, string): The MongoDB ObjectId of the case to update.
 *   **Request Body:** A JSON object. See [Request Body Formats](#request-body-formats) for `CaseUpdateRequest` structure.
@@ -137,7 +142,7 @@ Visualizations can be generated based on the data returned by these endpoints. F
             "case": { /* updated case object */ }
         }
         ```
-    *   `400 Bad Request`: If `case_id` or request data is invalid (e.g., trying to update non-allowed fields, missing `updated_by` for status change).
+    *   `400 Bad Request`: If `case_id` or request data is invalid (e.g., missing `updated_by` when updating status).
     *   `404 Not Found`: If the case with the given ID is not found.
     *   `500 Internal Server Error`: If there's a server-side issue.
 
@@ -168,7 +173,7 @@ Visualizations can be generated based on the data returned by these endpoints. F
 *   **Description:** Retrieves a paginated list of archived cases. Supports the same filtering options as listing active cases.
 *   **URL Parameters (Query Parameters):**
     *   Same as [List Active Cases](#1-list-active-cases).
-        *   Note: `violation_type` should be a comma-separated string if filtering by multiple types.
+        *   Note: `violation_types` should be a comma-separated string if filtering by multiple types.
 *   **Returns:**
     *   `200 OK`: A JSON object similar to the response for [List Active Cases](#1-list-active-cases), but containing archived cases.
     *   `400 Bad Request`: If date parameters are invalid.
@@ -246,9 +251,12 @@ This schema defines the available query parameters for filtering lists of cases 
 
 ```json
 {
-    "violation_type": "string (optional, comma-separated for multiple values)",
+    "violation_types": "string (optional, comma-separated for multiple values)",
+    "status": "string (optional)",
     "country": "string (optional)",
     "region": "string (optional)",
+    "priority": "string (optional)",
+    "search": "string (optional)",
     "date_from": "string (optional, YYYY-MM-DD)",
     "date_to": "string (optional, YYYY-MM-DD)",
     "skip": "integer (optional, default: 0, min: 0)",
@@ -256,9 +264,12 @@ This schema defines the available query parameters for filtering lists of cases 
 }
 ```
 **Field Descriptions:**
-*   `violation_type`: Filter by a specific type or a comma-separated list of violation types. If multiple types are provided, cases matching all of them will be returned.
+*   `violation_types`: Filter by a specific type or a comma-separated list of violation types. If multiple types are provided, cases matching all of them will be returned.
+*   `status`: Filter by case status (e.g., "open", "closed", "under_investigation").
 *   `country`: Filter by the country where the case occurred.
 *   `region`: Filter by the region within the country.
+*   `priority`: Filter by case priority level (e.g., "low", "medium", "high").
+*   `search`: Search term for case title or description.
 *   `date_from`: Start date for filtering cases by their creation date.
 *   `date_to`: End date for filtering cases by their creation date.
 *   `skip`: Number of records to skip (for pagination).
@@ -313,30 +324,34 @@ This schema is used for updating an existing case.
 {
     "case_data": {
         "status": "string (optional)",
-        "victims": "array of strings (MongoDB ObjectIds, optional)"
-    },
-    "updated_by": "string (MongoDB ObjectId, required)"
+        "victims": "array of strings (MongoDB ObjectIds, optional)",
+        "source_reports": "array of strings (MongoDB ObjectIds, optional)",
+        "updated_by": "string (MongoDB ObjectId, required when updating status)"
+    }
 }
 ```
 **Field Descriptions:**
 *   `case_data` (object, required):
-    *   `status` (string, optional): The new status for the case (e.g., "open", "closed", "pending investigation"). If provided, `updated_by` is mandatory.
+    *   `status` (string, optional): The new status for the case (e.g., "open", "closed", "under_investigation"). If provided, `updated_by` is mandatory.
     *   `victims` (array of strings, MongoDB ObjectIds, optional): A list of victim IDs to associate with the case. This will replace the existing list of victims.
-*   `updated_by` (string, MongoDB ObjectId, required): The ID of the user performing the update. This is always required for an update operation.
+    *   `source_reports` (array of strings, MongoDB ObjectIds, optional): A list of source report IDs to associate with the case. This will replace the existing list of source reports.
+    *   `updated_by` (string, MongoDB ObjectId, required when updating status): The ID of the user performing the update. This is required when updating the status field.
 
 **Example `CaseUpdateRequest` for `PATCH /{case_id}`:**
 ```json
 {
     "case_data": {
-        "status": "pending investigation",
-        "victims": ["60d5ecf8b392f8a7b8c4d5c3", "60d5ecf8b392f8a7b8c4d5d4"]
-    },
-    "updated_by": "60d5ecf8b392f8a7b8c4d5a0"
+        "status": "under_investigation",
+        "victims": ["60d5ecf8b392f8a7b8c4d5c3", "60d5ecf8b392f8a7b8c4d5d4"],
+        "source_reports": ["60d5ecf8b392f8a7b8c4d5b1", "60d5ecf8b392f8a7b8c4d5b2"],
+        "updated_by": "60d5ecf8b392f8a7b8c4d5a0"
+    }
 }
 ```
 **Note on `PATCH` behavior:**
-*   Only `status` and `victims` fields within `case_data` can be updated via this endpoint.
+*   Fields that can be updated: `status`, `victims`, and `source_reports`.
 *   If `status` is being updated, the `updated_by` field is mandatory and will be recorded in the case's history.
-*   Updating `victims` will overwrite the entire existing list of victims with the new list provided.
+*   Updating `victims` or `source_reports` will overwrite the entire existing list with the new list provided.
+*   Valid status values are: "open", "closed", "under_investigation".
 
 ---

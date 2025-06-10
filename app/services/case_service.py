@@ -12,6 +12,26 @@ class CaseService:
         self.collection = self.db.cases
         self.archived_collection = self.db.archived_cases
 
+    def _process_object_id_array(self, data, field_name: str) -> List[ObjectId]:
+        """
+        Process array field that can contain ObjectIds (victims, source_reports)
+        Accepts single item or array, converts strings to ObjectIds
+        """
+        if not isinstance(data, list):
+            # If single item, convert to list
+            data = [data]
+        
+        processed_items = []
+        for item in data:
+            if isinstance(item, str) and ObjectId.is_valid(item):
+                processed_items.append(ObjectId(item))
+            elif isinstance(item, ObjectId):
+                processed_items.append(item)
+            else:
+                raise ValueError(f"Invalid ObjectId format in {field_name}: {item}")
+        
+        return processed_items
+
     def _validate_case_id(self, case_id: str) -> None:
         """Validate ObjectId format and raise ValueError if invalid"""
         if not ObjectId.is_valid(case_id):
@@ -68,6 +88,9 @@ class CaseService:
         violation_types: Optional[str], # Changed from violation_type to violation_types
         country: Optional[str],
         region: Optional[str],
+        status: Optional[str],
+        priority: Optional[str],
+        search: Optional[str],
         date_from: Optional[datetime],
         date_to: Optional[datetime]
     ) -> Dict[str, Any]:
@@ -90,7 +113,15 @@ class CaseService:
             filter_query["location.region"] = {
                 "$regex": region, "$options": "i"
             }
+        if status:
+            filter_query["status"] = status
         
+        if priority:
+            filter_query["priority"] = priority
+        
+        if search:
+            filter_query["title"] = {"$regex": search, "$options": "i"}
+
         if date_from or date_to:
             date_filter = {}
             if date_from:
@@ -129,6 +160,9 @@ class CaseService:
         violation_types: Optional[str] = None, # Changed from violation_type to violation_types
         country: Optional[str] = None,
         region: Optional[str] = None,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        search: Optional[str] = None,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         skip: int = 0,
@@ -137,7 +171,7 @@ class CaseService:
         
         try:
             filter_query = self._build_filter_query(
-                violation_types, country, region, date_from, date_to # Changed from violation_type to violation_types
+                violation_types, country, region, status, priority, search, date_from, date_to
             )
             
             return self._query_cases_with_pagination(self.collection, filter_query, skip, limit)
@@ -242,7 +276,7 @@ class CaseService:
             logger.error(f"Error fetching case status history for {case_id}: {str(e)}")
             raise
 
-    def update_case(self, case_id: str, update_data: Dict[str, Any], updated_by: str) -> Optional[Dict[str, Any]]:
+    def update_case(self, case_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             try:
                 # Validate case_id
                 self._validate_case_id(case_id)
@@ -252,15 +286,10 @@ class CaseService:
                     logger.error("No fields provided for case update")
                     raise ValueError("No fields provided for update")
 
-                # --- NEW: Field restriction ---
-                allowed_fields = {"status", "victims"}
-                for key in update_data.keys():
-                    if key not in allowed_fields:
-                        raise ValueError(f"Field '{key}' cannot be updated. Only 'status' and 'victims' are allowed.")
 
                 # --- NEW: updated_by requirement for status change ---
                 if "status" in update_data:
-                    if not updated_by:
+                    if not update_data["updated_by"]:
                         raise ValueError("updated_by is required when updating status.")
 
                 # Fetch the existing case
@@ -269,39 +298,39 @@ class CaseService:
                     logger.error(f"Case not found: {case_id}")
                     raise ValueError("Case not found")
 
-                fields_to_set = {}
-
-                # Process 'victims' if present in update_data
+                fields_to_set = {}                # Process 'victims' if present in update_data
                 if "victims" in update_data:
-                    victims_list = update_data["victims"]
-                    if not isinstance(victims_list, list):
-                        raise ValueError("'victims' must be a list.")
                     try:
-                        processed_victims = []
-                        for v_id in victims_list:
-                            if isinstance(v_id, str) and ObjectId.is_valid(v_id):
-                                processed_victims.append(ObjectId(v_id))
-                            elif isinstance(v_id, ObjectId): # Already an ObjectId
-                                processed_victims.append(v_id)
-                            else:
-                                raise ValueError(f"Invalid ObjectId format in victims list: {v_id}")
-                        fields_to_set["victims"] = processed_victims
+                        fields_to_set["victims"] = self._process_object_id_array(update_data["victims"], "victims")
                     except ValueError as ve:
                         logger.error(f"Error processing victim IDs: {str(ve)}")
-                        raise # Re-raise the specific ValueError
+                        raise
                     except Exception as e:
                         logger.error(f"Invalid victim ID in victims list: {str(e)}")
                         raise ValueError(f"Invalid victim ID in victims list: {str(e)}")
+                
+                # Process 'source_reports' if present in update_data
+                if "source_reports" in update_data:
+                    try:
+                        fields_to_set["source_reports"] = self._process_object_id_array(update_data["source_reports"], "source_reports")
+                    except ValueError as ve:
+                        logger.error(f"Error processing source report IDs: {str(ve)}")
+                        raise
+                    except Exception as e:
+                        logger.error(f"Invalid source report ID in source_reports list: {str(e)}")
+                        raise ValueError(f"Invalid source report ID in source_reports list: {str(e)}")
                 
                 # Process 'status' if present in update_data
                 if "status" in update_data:
                     fields_to_set["status"] = update_data["status"]
                     
                 # Set updated_at timestamp
-                fields_to_set["updated_at"] = datetime.utcnow()
-
+                fields_to_set["updated_at"] = datetime.utcnow()                # Initialize updated_by variable
+                updated_by = None
+                
                 # Convert and add updated_by (the function parameter) to the document update, if provided
-                if updated_by:
+                if update_data.get("updated_by"):
+                    updated_by = update_data["updated_by"]
                     try:
                         if ObjectId.is_valid(updated_by):
                             fields_to_set["updated_by"] = ObjectId(updated_by)
@@ -319,7 +348,7 @@ class CaseService:
                 if not fields_to_set:
                     logger.info(f"No fields to update for case {case_id} after processing. Skipping database update.")
                     return self.get_case_by_id(case_id) # Return current state
-
+                
                 result = self.collection.update_one(
                     {"_id": ObjectId(case_id)},
                     {"$set": fields_to_set}

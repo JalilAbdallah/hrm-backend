@@ -50,6 +50,9 @@ def get_cases_with_filters(case_service: CaseService, filters: CaseFilters, get_
         region=filters.region,
         date_from=date_from,
         date_to=date_to,
+        status=filters.status,
+        priority=filters.priority,
+        search=filters.search,
         skip=filters.skip,
         limit=filters.limit
     )
@@ -139,7 +142,7 @@ async def update_case(
     Errors: 400 (invalid ID/data), 404 (not found), 500 (server error)
     """
     try:
-        updated_case = case_service.update_case(case_id, request.case_data, request.updated_by)
+        updated_case = case_service.update_case(case_id, request.case_data)
         handle_not_found(updated_case, "Case")
         return build_success_response("Case updated successfully", {"case": updated_case})
     except ValueError as e:
