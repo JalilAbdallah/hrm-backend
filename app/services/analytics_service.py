@@ -3,9 +3,9 @@ from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from config.database import get_database
 from schemas.analytics_schema import (
-    ViolationsAnalyticsResponse, GeodataResponse, TimelineResponse,
+    ViolationsAnalyticsResponse, GeodataResponse,
     DashboardResponse, TrendsResponse, RiskAssessmentResponse,
-    ViolationCount, GeographicDataPoint, TimelineDataPoint,
+    ViolationCount, GeographicDataPoint,
     StatusCount, RiskLevelCount, YearlyTrendsData, ViolationTypeCount
 )
 import logging
@@ -250,7 +250,6 @@ class AnalyticsService:
             ]
             
             print(f"Reports Pipeline: {reports_pipeline}")
-            
             reports_result = list(self.reports_collection.aggregate(reports_pipeline))
             
             violation_counts = [
@@ -361,30 +360,6 @@ class AnalyticsService:
         else:
             return {"year": {"$year": "$date_occurred"}}
     
-    def _combine_timeline_data(self, cases_result: List, reports_result: List, period_type: str) -> List[TimelineDataPoint]:
-        """Combine timeline data from cases and reports"""
-        timeline_map = {}
-        
-        for item in cases_result:
-            period = self._format_period(item["_id"], period_type)
-            timeline_map[period] = timeline_map.get(period, {"cases": 0, "reports": 0})
-            timeline_map[period]["cases"] = item["cases"]
-        
-        for item in reports_result:
-            period = self._format_period(item["_id"], period_type)
-            timeline_map[period] = timeline_map.get(period, {"cases": 0, "reports": 0})
-            timeline_map[period]["reports"] = item["reports"]
-        
-        result = []
-        for period, data in sorted(timeline_map.items()):
-            result.append(TimelineDataPoint(
-                period=period,
-                cases=data["cases"],
-                reports=data["reports"],
-                total_incidents=data["cases"] + data["reports"]
-            ))
-        
-        return result
     
     def _process_yearly_trends(
         self, 
