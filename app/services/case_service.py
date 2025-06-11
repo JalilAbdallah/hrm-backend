@@ -11,6 +11,7 @@ class CaseService:
         self.db = get_database()
         self.collection = self.db.cases
         self.archived_collection = self.db.archived_cases
+        self.waitlist = self.db.waited_individuals
 
     def _process_object_id_array(self, data, field_name: str) -> List[ObjectId]:
         """
@@ -448,3 +449,34 @@ class CaseService:
             logger.error(f"Error restoring case {case_id}: {str(e)}")
             raise
 
+    def add_victims_to_waitlist(self, victims_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add victims to the waitlist"""
+        print(f"Adding victims to waitlist with data: {victims_data}")
+        try:
+            # Validate and process victims_data
+            if not victims_data:
+                raise ValueError("No victims data provided")
+
+            # Validate required fields
+            if "case_id" not in victims_data:
+                raise ValueError("Missing required field: case_id")
+            
+            if "victims" not in victims_data or not victims_data["victims"]:
+                raise ValueError("Missing required field: victims")
+
+            # Convert case_id to ObjectId if it's a string
+            if isinstance(victims_data["case_id"], str):
+                if ObjectId.is_valid(victims_data["case_id"]):
+                    victims_data["case_id"] = ObjectId(victims_data["case_id"])
+                else:
+                    raise ValueError(f"Invalid case_id format: {victims_data['case_id']}")
+            # Insert victims into waitlist
+            result = self.waitlist.insert_one(victims_data)
+
+            logger.info(f"Successfully added victims to waitlist: {result.inserted_id}")
+            retrieved_entry = self.waitlist.find_one({"_id": result.inserted_id})
+            serialized_entry = self._serialize_case(retrieved_entry)
+            return {"message": "Victims added to waitlist successfully", "waitlist_entry": serialized_entry}
+        except Exception as e:
+            logger.error(f"Error adding victims to waitlist: {str(e)}")
+            raise
