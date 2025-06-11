@@ -4,6 +4,7 @@ from typing import Optional, Tuple, Any, Dict
 from services.case_service import CaseService
 from schemas.case_schema import CaseFilters, CaseUpdateRequest
 from utils.case_response import build_paginated_response
+from middleware.auth import require_admin,require_institution,access_both 
 
 router = APIRouter()
 
@@ -62,6 +63,7 @@ def get_cases_with_filters(case_service: CaseService, filters: CaseFilters, get_
 # Active Case Routes
 @router.get("/")
 async def list_cases(
+    current_user: dict =Depends(require_admin),
     filters: CaseFilters = Depends(),
     case_service: CaseService = Depends(get_case_service)
 ):
@@ -85,7 +87,10 @@ async def list_cases(
         )   
 
 @router.post("/")
-async def create_case(case_data: dict, case_service: CaseService = Depends(get_case_service)):
+async def create_case(
+    case_data: dict,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
     """
     Create new case with required fields validation.
     Body: case data dict (title, description, violation_types, status, priority, location, created_by)
@@ -107,7 +112,10 @@ async def create_case(case_data: dict, case_service: CaseService = Depends(get_c
         )
 
 @router.get("/{case_id}")
-async def get_case(case_id: str, case_service: CaseService = Depends(get_case_service)):
+async def get_case(
+    case_id: str,
+    current_user: Dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
     """
     Get single case by ID.
     Path param: case_id (ObjectId string)
@@ -133,6 +141,7 @@ async def get_case(case_id: str, case_service: CaseService = Depends(get_case_se
 async def update_case(
     case_id: str, 
     request: CaseUpdateRequest,
+    current_user: dict =Depends(require_admin),
     case_service: CaseService = Depends(get_case_service)
 ):
     """
@@ -157,7 +166,10 @@ async def update_case(
         )
 
 @router.delete('/{case_id}')
-async def delete_case(case_id: str, case_service: CaseService = Depends(get_case_service)):
+async def delete_case(
+    case_id: str,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
     """
     Archive case (soft delete) - moves from cases to archived_cases collection.
     Path param: case_id (ObjectId string)
@@ -181,7 +193,10 @@ async def delete_case(case_id: str, case_service: CaseService = Depends(get_case
 
 # Waitlist Route
 @router.post("/waitlist/")
-async def add_to_waitlist(victims_data: dict, case_service: CaseService = Depends(get_case_service)):
+async def add_to_waitlist(
+    victims_data: dict,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
     """
     Add victims to waitlist.
     Body: victims_data dict
@@ -206,6 +221,7 @@ async def add_to_waitlist(victims_data: dict, case_service: CaseService = Depend
 # Archived Case Routes
 @router.get("/archive/")
 async def list_archived_cases(
+    current_user: dict =Depends(require_admin),
     filters: CaseFilters = Depends(),
     case_service: CaseService = Depends(get_case_service)
 ):
@@ -230,7 +246,9 @@ async def list_archived_cases(
 
 @router.get("/archive/{case_id}")
 async def get_archived_case(
-    case_id: str, case_service: CaseService = Depends(get_case_service)
+    case_id: str,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)
 ):
     """
     Get single archived case by ID.
@@ -255,7 +273,9 @@ async def get_archived_case(
 
 @router.post("/archive/{case_id}/restore")
 async def restore_case(
-    case_id: str, case_service: CaseService = Depends(get_case_service)
+    case_id: str, 
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)
 ):
     """
     Restore archived case back to active cases collection.
@@ -281,7 +301,9 @@ async def restore_case(
 # History Route
 @router.get("/history/{case_id}")
 async def get_case_history(
-    case_id: str, case_service: CaseService = Depends(get_case_service)
+    case_id: str,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)
 ):
     """
     Get status change history for a case.

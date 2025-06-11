@@ -93,7 +93,9 @@ class CaseService:
         priority: Optional[str],
         search: Optional[str],
         date_from: Optional[datetime],
-        date_to: Optional[datetime]
+        date_to: Optional[datetime],
+        skip: int = 0,
+        limit: int = 100
     ) -> Dict[str, Any]:
         
         filter_query = {}

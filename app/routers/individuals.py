@@ -4,6 +4,7 @@ from schemas.individual_schema import VictimCreate, VictimOut, VictimOutSafe, Vi
 from schemas.waited_individual_schema import WaitedIndividualOut, UpdateWaitedVictimsRequest
 from services.individuals_service import VictimService
 from utils.conversion import convert_objectid_to_str
+from middleware.auth import require_admin,require_institution,access_both 
 
 
 def get_victim_service() -> VictimService:
@@ -14,7 +15,9 @@ router = APIRouter()
 
 
 @router.get("/waited", response_model=List[WaitedIndividualOut])
-def get_waited_individuals(service: VictimService = Depends(get_victim_service)):
+def get_waited_individuals(
+    current_user: dict =Depends(require_admin),
+    service: VictimService = Depends(get_victim_service)):
     return service.get_waited_individuals()
 
 
@@ -22,6 +25,7 @@ def get_waited_individuals(service: VictimService = Depends(get_victim_service))
 def update_waited_victims_by_case(
         case_id: str,
         req: UpdateWaitedVictimsRequest,
+        current_user: dict =Depends(require_admin),
         service: VictimService = Depends(get_victim_service)
 ):
     success = service.update_waited_victims_by_case(case_id, [v.dict() for v in req.victims])
@@ -33,6 +37,7 @@ def update_waited_victims_by_case(
 @router.post("/")
 def create_victim(
         victim: VictimCreate,
+        current_user: dict =Depends(require_admin),
         service: VictimService = Depends(get_victim_service)
 ):
     print("Victim data:", victim.dict())
@@ -43,6 +48,7 @@ def create_victim(
 @router.get("/case/{case_id}")
 def get_victims_by_case(
         case_id: str,
+        current_user: dict =Depends(access_both),
         service: VictimService = Depends(get_victim_service)
 ):
     victims = service.get_victims_by_case(case_id)
@@ -53,6 +59,7 @@ def get_victims_by_case(
 def update_risk_assessment(
         victim_id: str,
         risk: VictimUpdateRisk,
+        current_user: dict =Depends(require_admin),
         service: VictimService = Depends(get_victim_service)
 ):
     success = service.update_risk_level(victim_id, risk.dict())
@@ -64,6 +71,7 @@ def update_risk_assessment(
 @router.get("/{victim_id}")
 def get_victim_by_id(
         victim_id: str,
+        current_user: dict =Depends(require_admin),
         service: VictimService = Depends(get_victim_service)
 ):
     victim = service.get_victim_by_id(victim_id)
