@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from config.database import connect_to_mongo, close_mongo_connection
-from routers import reports, auth, cases
+from routers import reports, auth, cases, analytics
 from middleware.cors import setup_cors
 from routers.individuals import router as individuals_router
 import os
@@ -36,6 +36,7 @@ app.include_router(individuals_router, prefix="/victims", tags=["individuals"])
 
 app.include_router(auth.router, prefix="/auth", tags=["authorization"])
 app.include_router(cases.router, prefix="/cases", tags=["cases"])
+app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])  # Add analytics router
 
 
 
