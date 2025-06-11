@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status as HTTPStatus, Depends
 from datetime import datetime
 from services.report_service import ReportService
 from schemas.report_schema import ReportFilters, CreateIncidentReport, IncidentReportResponse, UpdateReportResponse, UpdateReportStatus
+from middleware.auth import require_admin,require_institution,access_both 
 
 router = APIRouter()
 
@@ -11,6 +12,7 @@ def get_report_service():
 @router.get("/")
 
 async def list_reports(
+    current_user: dict =Depends(require_admin),
     filters: ReportFilters = Depends(),
     report_service: ReportService = Depends(get_report_service)
 ):
@@ -49,6 +51,7 @@ async def list_reports(
 @router.post("/", status_code=HTTPStatus.HTTP_201_CREATED)
 async def create_incident_report(
     report_data: CreateIncidentReport,
+    current_user: dict =Depends(require_admin),
     report_service: ReportService = Depends(get_report_service)
 ):
     try:
@@ -78,6 +81,7 @@ async def create_incident_report(
 async def update_report_status(
     report_id: str,
     status_data: UpdateReportStatus,
+    current_user: dict =Depends(require_admin),
     report_service: ReportService = Depends(get_report_service)
 ):
     try:

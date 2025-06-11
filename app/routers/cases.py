@@ -4,6 +4,7 @@ from typing import Optional, Tuple, Any, Dict
 from services.case_service import CaseService
 from schemas.case_schema import CaseFilters, CaseUpdateRequest
 from utils.case_response import build_paginated_response
+from middleware.auth import require_admin,require_institution,access_both 
 
 router = APIRouter()
 
@@ -45,7 +46,7 @@ def get_cases_with_filters(case_service: CaseService, filters: CaseFilters, get_
     
     get_method = getattr(case_service, get_method_name)
     data = get_method(
-        violation_types=filters.violation_types, # Correctly pass violation_types
+        violation_types=filters.violation_types,
         country=filters.country,
         region=filters.region,
         date_from=date_from,
@@ -59,8 +60,10 @@ def get_cases_with_filters(case_service: CaseService, filters: CaseFilters, get_
     
     return build_paginated_response(data, filters)
 
+# Active Case Routes
 @router.get("/")
 async def list_cases(
+    current_user: dict =Depends(require_admin),
     filters: CaseFilters = Depends(),
     case_service: CaseService = Depends(get_case_service)
 ):
@@ -81,11 +84,38 @@ async def list_cases(
         raise HTTPException(
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error while fetching cases: {str(e)}"
+        )   
+
+@router.post("/")
+async def create_case(
+    case_data: dict,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
+    """
+    Create new case with required fields validation.
+    Body: case data dict (title, description, violation_types, status, priority, location, created_by)
+    Returns: {"message": "success", "case": created_case}
+    Errors: 400 (missing fields), 500 (server error)
+    """
+    try:
+        new_case = case_service.create_case(case_data)
+        return build_success_response("Case created successfully", {"case": new_case})
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error while creating case: {str(e)}"
         )
 
-
 @router.get("/{case_id}")
-async def get_case(case_id: str, case_service: CaseService = Depends(get_case_service)):
+async def get_case(
+    case_id: str,
+    current_user: Dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
     """
     Get single case by ID.
     Path param: case_id (ObjectId string)
@@ -106,33 +136,12 @@ async def get_case(case_id: str, case_service: CaseService = Depends(get_case_se
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error while fetching case: {str(e)}"
         )
-    
-@router.post("/")
-async def create_case(case_data: dict, case_service: CaseService = Depends(get_case_service)):
-    """
-    Create new case with required fields validation.
-    Body: case data dict (title, description, violation_types, status, priority, location, created_by)
-    Returns: {"message": "success", "case": created_case}
-    Errors: 400 (missing fields), 500 (server error)
-    """
-    try:
-        new_case = case_service.create_case(case_data)
-        return build_success_response("Case created successfully", {"case": new_case})
-    except ValueError as e:
-        raise HTTPException(
-            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error while creating case: {str(e)}"
-        )
-    
+
 @router.patch("/{case_id}")
 async def update_case(
     case_id: str, 
     request: CaseUpdateRequest,
+    current_user: dict =Depends(require_admin),
     case_service: CaseService = Depends(get_case_service)
 ):
     """
@@ -154,36 +163,13 @@ async def update_case(
         raise HTTPException(
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error while updating case: {str(e)}"
-        )    
-    
-
-@router.post("/archive/{case_id}/restore")
-async def restore_case(
-    case_id: str, case_service: CaseService = Depends(get_case_service)
-):
-    """
-    Restore archived case back to active cases collection.
-    Path param: case_id (ObjectId string)
-    Returns: {"message": "Case restored successfully", "case_id": "..."}
-    Errors: 400 (invalid ID), 404 (archived case not found), 500 (server error)
-    """
-    try:
-        result = case_service.restore_case(case_id)
-        handle_not_found(result, "Archived case")
-        return build_success_response("Case restored successfully", {"case_id": case_id})
-    except ValueError as e:
-        raise HTTPException(
-            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error while restoring case: {str(e)}"
         )
 
 @router.delete('/{case_id}')
-async def delete_case(case_id: str, case_service: CaseService = Depends(get_case_service)):
+async def delete_case(
+    case_id: str,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
     """
     Archive case (soft delete) - moves from cases to archived_cases collection.
     Path param: case_id (ObjectId string)
@@ -205,8 +191,37 @@ async def delete_case(case_id: str, case_service: CaseService = Depends(get_case
             detail=f"Internal server error while archiving case: {str(e)}"
         )
 
+# Waitlist Route
+@router.post("/waitlist/")
+async def add_to_waitlist(
+    victims_data: dict,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)):
+    """
+    Add victims to waitlist.
+    Body: victims_data dict
+    Returns: {"message": "victims added to waitlist successfully"}
+    Errors: 400 (invalid data), 404 (not found), 500 (server error)
+    """
+    try:
+        result = case_service.add_victims_to_waitlist(victims_data)
+        handle_not_found(result, "Case waitlist")
+        return build_success_response("victims added to waitlist successfully")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error while adding victims to waitlist: {str(e)}"
+        )
+
+# Archived Case Routes
 @router.get("/archive/")
 async def list_archived_cases(
+    current_user: dict =Depends(require_admin),
     filters: CaseFilters = Depends(),
     case_service: CaseService = Depends(get_case_service)
 ):
@@ -229,10 +244,11 @@ async def list_archived_cases(
             detail=f"Internal server error while fetching archived cases: {str(e)}"
         )
 
-
 @router.get("/archive/{case_id}")
 async def get_archived_case(
-    case_id: str, case_service: CaseService = Depends(get_case_service)
+    case_id: str,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)
 ):
     """
     Get single archived case by ID.
@@ -255,10 +271,39 @@ async def get_archived_case(
             detail=f"Internal server error while fetching archived case: {str(e)}"
         )
 
+@router.post("/archive/{case_id}/restore")
+async def restore_case(
+    case_id: str, 
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)
+):
+    """
+    Restore archived case back to active cases collection.
+    Path param: case_id (ObjectId string)
+    Returns: {"message": "Case restored successfully", "case_id": "..."}
+    Errors: 400 (invalid ID), 404 (archived case not found), 500 (server error)
+    """
+    try:
+        result = case_service.restore_case(case_id)
+        handle_not_found(result, "Archived case")
+        return build_success_response("Case restored successfully", {"case_id": case_id})
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error while restoring case: {str(e)}"
+        )
 
+# History Route
 @router.get("/history/{case_id}")
 async def get_case_history(
-    case_id: str, case_service: CaseService = Depends(get_case_service)
+    case_id: str,
+    current_user: dict =Depends(require_admin),
+    case_service: CaseService = Depends(get_case_service)
 ):
     """
     Get status change history for a case.

@@ -55,5 +55,3 @@ async def get_trends_analytics(
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-
-
