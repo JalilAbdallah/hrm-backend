@@ -6,7 +6,7 @@ class AnalyticsFilters(BaseModel):
     date_from: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
     date_to: Optional[str] = Field(None, description="End date (YYYY-MM-DD)")
     country: Optional[str] = Field(None, description="Filter by country")
-    region: Optional[str] = Field(None, description="Filter by region")
+    city: Optional[str] = Field(None, description="Filter by city")
     violation_type: Optional[str] = Field(None, description="Filter by violation type")
 
 class TrendsFilters(BaseModel):

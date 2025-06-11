@@ -21,21 +21,16 @@ class AnalyticsService:
     
     def get_dashboard_analytics(self) -> DashboardResponse:
         try:
-            # Get basic counts
             total_cases = self.cases_collection.count_documents({})
             total_reports = self.reports_collection.count_documents({})
             total_victims = self.victims_collection.count_documents({})
             
-            # Get cases by status
             cases_by_status = self._get_status_distribution(self.cases_collection, "status")
             
-            # Get reports by status  
             reports_by_status = self._get_status_distribution(self.reports_collection, "status")
             
-            # Get victims by risk level
             victims_by_risk = self._get_risk_distribution()
             
-            # Get recent activity (last 30 days)
             recent_activity = self._get_recent_activity()
                         
             return DashboardResponse(
@@ -58,26 +53,12 @@ class AnalyticsService:
         year_to: Optional[int] = None, 
         violation_types: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """
-        Get trends analytics showing violation counts by year and type
-        
-        Args:
-            year_from: Starting year for analysis
-            year_to: Ending year (if None, uses current year)
-            violation_types: List of violation types to filter by (if None, includes all)
-        
-        Returns:
-            Dictionary matching TrendsResponse schema structure
-        """
-        # Set default end year to current year if not provided
         if year_to is None:
             year_to = datetime.now().year
         
-        # Validate year range
         if year_from > year_to:
             raise ValueError("year_from cannot be greater than year_to")
         
-        # Define all possible violation types
         all_violation_types = [
             "attack_on_medical",
             "attack_on_education", 
@@ -87,17 +68,13 @@ class AnalyticsService:
             "other"
         ]
         
-        # Use provided violation types or default to all
         target_violation_types = violation_types if violation_types else all_violation_types
         
-        # Validate violation types
         invalid_types = [vt for vt in target_violation_types if vt not in all_violation_types]
         if invalid_types:
             raise ValueError(f"Invalid violation types: {invalid_types}")
         
-        # Build MongoDB aggregation pipeline
         pipeline = [
-            # Match documents within the year range
             {
                 "$match": {
                     "incident_details.date_occurred": {
@@ -106,23 +83,19 @@ class AnalyticsService:
                     }
                 }
             },
-            # Add year field for grouping
             {
                 "$addFields": {
                     "year": {"$year": "$incident_details.date_occurred"}
                 }
             },
-            # Unwind violation_types array to process each violation separately
             {
                 "$unwind": "$incident_details.violation_types"
             },
-            # Filter by target violation types
             {
                 "$match": {
                     "incident_details.violation_types": {"$in": target_violation_types}
                 }
             },
-            # Group by year and violation type
             {
                 "$group": {
                     "_id": {
@@ -132,7 +105,6 @@ class AnalyticsService:
                     "count": {"$sum": 1}
                 }
             },
-            # Sort by year and violation type
             {
                 "$sort": {
                     "_id.year": 1,
@@ -141,14 +113,11 @@ class AnalyticsService:
             }
         ]
         
-        # Execute aggregation
         result = list(self.reports_collection.aggregate(pipeline))
         
-        # Process results into the required format
         yearly_data = {}
         total_violations_all_years = 0
         
-        # Initialize structure for all years in range
         for year in range(year_from, year_to + 1):
             yearly_data[year] = {
                 "year": year,
@@ -156,7 +125,6 @@ class AnalyticsService:
                 "total_violations": 0
             }
         
-        # Process aggregation results
         for item in result:
             year = item["_id"]["year"]
             violation_type = item["_id"]["violation_type"]
@@ -170,7 +138,6 @@ class AnalyticsService:
                 yearly_data[year]["total_violations"] += count
                 total_violations_all_years += count
         
-        # Ensure all violation types are represented for each year (with 0 counts if needed)
         for year_data in yearly_data.values():
             existing_types = {v["violation_type"] for v in year_data["violations"]}
             
@@ -181,10 +148,8 @@ class AnalyticsService:
                         "count": 0
                     })
             
-            # Sort violations by type for consistency
             year_data["violations"].sort(key=lambda x: x["violation_type"])
         
-        # Convert to list format required by schema
         data = list(yearly_data.values())
         
         return {
@@ -194,16 +159,63 @@ class AnalyticsService:
             "total_violations_all_years": total_violations_all_years
         }
 
-    
-    # Helper methods
+
+    def get_violations_analytics(
+        self,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        country: Optional[str] = None,
+        city: Optional[str] = None,
+        violation_type: Optional[str] = None
+    ) -> ViolationsAnalyticsResponse:
+        try:
+            match_filters = self._build_date_location_filters(date_from, date_to, country, city)
+            
+            if violation_type:
+                match_filters["incident_details.violation_types"] = violation_type
+            
+            print(match_filters)
+            reports_pipeline = [
+                {"$match": match_filters},
+                {"$unwind": "$incident_details.violation_types"},
+                {"$group": {
+                    "_id": "$incident_details.violation_types",
+                    "count": {"$sum": 1}
+                }},
+                {"$sort": {"count": -1}}
+            ]
+            
+            print(f"Reports Pipeline: {reports_pipeline}")
+            
+            reports_result = list(self.reports_collection.aggregate(reports_pipeline))
+            
+            violation_counts = [
+                ViolationCount(
+                    violation_type=item["_id"],
+                    count=item["count"]
+                )
+                for item in reports_result
+            ]
+            
+            total_violations = sum(item.count for item in violation_counts)
+            
+            return ViolationsAnalyticsResponse(
+                data=violation_counts,
+                total_violations=total_violations,
+                unique_types=len(violation_counts)
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in violations analytics: {str(e)}")
+            raise    
+
     def _build_date_location_filters(
         self, 
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         country: Optional[str] = None,
-        region: Optional[str] = None
+        city: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Build MongoDB filter query for date and location"""
         filters = {}
         
         if date_from or date_to:
@@ -212,33 +224,30 @@ class AnalyticsService:
                 date_filter["$gte"] = date_from
             if date_to:
                 date_filter["$lte"] = date_to
-            filters["date_occurred"] = date_filter
+            filters["incident_details.date_occurred"] = date_filter
         
         if country:
-            filters["location.country"] = country
+            filters["incident_details.location.country"] = country
         
-        if region:
-            filters["location.region"] = region
-            
+        if city:
+            filters["incident_details.location.city"] = city
+
         return filters
     
     def _combine_violation_counts(self, cases_result: List, reports_result: List) -> List[ViolationCount]:
-        """Combine violation counts from cases and reports"""
         violation_map = {}
         
-        # Process cases results
         for item in cases_result:
             violation_type = item["_id"]
             count = item["count"]
             violation_map[violation_type] = violation_map.get(violation_type, 0) + count
         
-        # Process reports results
         for item in reports_result:
             violation_type = item["_id"]
             count = item["count"]
             violation_map[violation_type] = violation_map.get(violation_type, 0) + count
         
-        # Convert to list and sort
+
         result = [
             ViolationCount(violation_type=vtype, count=count)
             for vtype, count in violation_map.items()
@@ -257,7 +266,7 @@ class AnalyticsService:
             if coordinates and coordinates.get("coordinates"):
                 coords = coordinates["coordinates"]
                 geodata.append(GeographicDataPoint(
-                    location={"lat": coords[1], "lng": coords[0]},  # MongoDB stores [lng, lat]
+                    location={"lat": coords[1], "lng": coords[0]},
                     region=location_data.get("region", "Unknown"),
                     country=location_data.get("country", "Unknown"),
                     incident_count=item["incident_count"],
@@ -291,19 +300,16 @@ class AnalyticsService:
         """Combine timeline data from cases and reports"""
         timeline_map = {}
         
-        # Process cases
         for item in cases_result:
             period = self._format_period(item["_id"], period_type)
             timeline_map[period] = timeline_map.get(period, {"cases": 0, "reports": 0})
             timeline_map[period]["cases"] = item["cases"]
         
-        # Process reports
         for item in reports_result:
             period = self._format_period(item["_id"], period_type)
             timeline_map[period] = timeline_map.get(period, {"cases": 0, "reports": 0})
             timeline_map[period]["reports"] = item["reports"]
         
-        # Convert to list
         result = []
         for period, data in sorted(timeline_map.items()):
             result.append(TimelineDataPoint(
@@ -322,15 +328,11 @@ class AnalyticsService:
         year_to: int, 
         violation_types: List[str]
     ) -> List[YearlyTrendsData]:
-        """Process and combine yearly trends data from cases and reports"""
-        
-        # Initialize data structure for all years and violation types
         yearly_data = {}
         for year in range(year_from, year_to + 1):
             yearly_data[year] = {violation_type: 0 for violation_type in violation_types}
         
         
-        # Process reports results
         for item in reports_result:
             year = item["_id"]["year"]
             violation_type = item["_id"]["violation_type"]
@@ -338,7 +340,6 @@ class AnalyticsService:
             if year in yearly_data and violation_type in yearly_data[year]:
                 yearly_data[year][violation_type] += count
         
-        # Convert to response format
         result = []
         for year in sorted(yearly_data.keys()):
             violations = [
@@ -357,7 +358,6 @@ class AnalyticsService:
         return result
 
     def _format_period(self, date_obj: Dict, period_type: str) -> str:
-        """Format date object to period string"""
         if period_type == "monthly":
             return f"{date_obj['year']}-{date_obj['month']:02d}"
         elif period_type == "weekly":
@@ -367,8 +367,6 @@ class AnalyticsService:
         else:
             return str(date_obj['year'])
     
-    # Additional helper methods would be implemented here
-    # (Status distribution, risk analysis, etc.)
     
     def _get_status_distribution(self, collection, status_field: str) -> List[StatusCount]:
         """Get distribution of statuses from a collection"""
@@ -407,7 +405,6 @@ class AnalyticsService:
             "new_reports": recent_reports
         }
             
-    # Additional helper methods for trends and risk assessment...
     def _get_violations_for_period(self, start_date: datetime, end_date: datetime) -> Dict[str, int]:
         """Get violation counts for a specific period"""
         return {}

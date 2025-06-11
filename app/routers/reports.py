@@ -51,7 +51,6 @@ async def list_reports(
 @router.post("/", status_code=HTTPStatus.HTTP_201_CREATED)
 async def create_incident_report(
     report_data: CreateIncidentReport,
-    current_user: dict =Depends(require_admin),
     report_service: ReportService = Depends(get_report_service)
 ):
     try:

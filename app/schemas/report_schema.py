@@ -43,7 +43,6 @@ class Victim(BaseModel):
 
 class Evidence(BaseModel):
     type: str = Field(...)
-    filename: str = Field(...)
     url: str = Field(...)
     description: Optional[str] = Field(None)
 

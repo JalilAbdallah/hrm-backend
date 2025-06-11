@@ -55,3 +55,82 @@ async def get_trends_analytics(
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+        
+@router.get("/violations", response_model=ViolationsAnalyticsResponse)
+async def get_violations_analytics(
+    filters: AnalyticsFilters = Depends(),
+    analytics_service: AnalyticsService = Depends(get_analytics_service)
+):
+    try:
+        date_from = None
+        date_to = None
+        
+        if filters.date_from:
+            date_from = datetime.strptime(filters.date_from, "%Y-%m-%d")
+        
+        if filters.date_to:
+            date_to = datetime.strptime(filters.date_to, "%Y-%m-%d")
+        
+        data = analytics_service.get_violations_analytics(
+            date_from=date_from,
+            date_to=date_to,
+            country=filters.country,
+            city=filters.city,
+            violation_type=filters.violation_type
+        )
+        
+        return data
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format: {str(e)}"
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching violations analytics"
+        )
+
+@router.get("/timeline", response_model=TimelineResponse)
+async def get_timeline_analytics(
+    period_type: str = "monthly",
+    filters: AnalyticsFilters = Depends(),
+    analytics_service: AnalyticsService = Depends(get_analytics_service)
+):
+    try:
+        valid_periods = ["monthly", "weekly", "daily"]
+        if period_type not in valid_periods:
+            raise ValueError(f"Invalid period_type. Must be one of: {', '.join(valid_periods)}")
+        
+        date_from = None
+        date_to = None
+        
+        if filters.date_from:
+            date_from = datetime.strptime(filters.date_from, "%Y-%m-%d")
+        
+        if filters.date_to:
+            date_to = datetime.strptime(filters.date_to, "%Y-%m-%d")
+        
+        data = analytics_service.get_timeline_analytics(
+            date_from=date_from,
+            date_to=date_to,
+            period_type=period_type,
+            country=filters.country,
+            region=filters.region
+        )
+        
+        return data
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching timeline analytics"
+        )
