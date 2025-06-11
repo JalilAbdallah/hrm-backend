@@ -7,7 +7,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Security scheme for extracting Bearer token
 security = HTTPBearer()
 
 class AuthMiddleware:
@@ -16,17 +15,7 @@ class AuthMiddleware:
         self.jwt_algorithm = 'HS256'
 
     def verify_jwt_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """
-        Verify JWT token and return payload if valid
-        
-        Args:
-            token: JWT token string
-            
-        Returns:
-            Dict containing token payload if valid, None otherwise
-        """
         try:
-            # Remove 'Bearer ' prefix if present
             if token.startswith('Bearer '):
                 token = token[7:]
             
@@ -55,16 +44,6 @@ class AuthMiddleware:
             )
 
     def check_role_permission(self, token_payload: Dict[str, Any], required_role: str) -> bool:
-        """
-        Check if user role from JWT token matches required role
-        
-        Args:
-            token_payload: Decoded JWT payload containing user info
-            required_role: Required role string to compare against
-            
-        Returns:
-            True if user has required role, False otherwise
-        """
         try:
             user_role = token_payload.get('role')
             if not user_role:
@@ -80,21 +59,10 @@ class AuthMiddleware:
             return False
 
 
-# Create middleware instance
 auth_middleware = AuthMiddleware()
 
-# Dependency functions for FastAPI
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """
-    FastAPI dependency to get current authenticated user from JWT token
-    
-    Raises:
-        HTTPException: If token is invalid or expired
-        
-    Returns:
-        Dict containing user information from token payload
-    """
     token = credentials.credentials
     payload = auth_middleware.verify_jwt_token(token)
     
@@ -108,15 +76,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return payload
 
 def require_role(required_role: str):
-    """
-    FastAPI dependency factory to require specific role
-    
-    Args:
-        required_role: Role string that user must have
-        
-    Returns:
-        FastAPI dependency function
-    """
     async def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
         if not auth_middleware.check_role_permission(current_user, required_role):
             raise HTTPException(
@@ -128,15 +87,6 @@ def require_role(required_role: str):
     return role_checker
 
 def require_any_role(required_roles: list):
-    """
-    FastAPI dependency factory to require any of the specified roles
-    
-    Args:
-        required_roles: List of role strings that user can have
-        
-    Returns:
-        FastAPI dependency function
-    """
     async def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
         user_has_permission = any(
             auth_middleware.check_role_permission(current_user, role) 
@@ -152,7 +102,6 @@ def require_any_role(required_roles: list):
     
     return role_checker
 
-# Convenience dependencies for common roles
 require_admin = require_role("admin")
 require_institution = require_role("institution")
 access_both = require_any_role(["admin", "institution"])

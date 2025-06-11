@@ -4,18 +4,10 @@ from services.auth_service import AuthService
 
 router = APIRouter()
 
-# Request/Response models
 class LoginRequest(BaseModel):
     email: str
     password: str
 
-# class LogoutRequest(BaseModel):
-#     token: str
-
-# class TokenVerificationResponse(BaseModel):
-#     valid: bool
-#     expired: bool
-#     user_data: Dict[str, Any] = None
 
 def get_auth_service() -> AuthService:
     return AuthService()
@@ -25,9 +17,6 @@ async def login(
     request: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service)
 ):
-    """
-    Authenticate user and return JWT token
-    """
     try:
         result = await auth_service.login(request.email, request.password)
         return result

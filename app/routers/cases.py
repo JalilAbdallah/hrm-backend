@@ -277,12 +277,6 @@ async def restore_case(
     current_user: dict =Depends(require_admin),
     case_service: CaseService = Depends(get_case_service)
 ):
-    """
-    Restore archived case back to active cases collection.
-    Path param: case_id (ObjectId string)
-    Returns: {"message": "Case restored successfully", "case_id": "..."}
-    Errors: 400 (invalid ID), 404 (archived case not found), 500 (server error)
-    """
     try:
         result = case_service.restore_case(case_id)
         handle_not_found(result, "Archived case")
@@ -298,19 +292,12 @@ async def restore_case(
             detail=f"Internal server error while restoring case: {str(e)}"
         )
 
-# History Route
 @router.get("/history/{case_id}")
 async def get_case_history(
     case_id: str,
     current_user: dict =Depends(require_admin),
     case_service: CaseService = Depends(get_case_service)
 ):
-    """
-    Get status change history for a case.
-    Path param: case_id (ObjectId string)
-    Returns: History array with status changes, timestamps, and users
-    Errors: 400 (invalid ID), 404 (history not found), 500 (server error)
-    """
     try:
         history = case_service.get_case_status_history(case_id)
         handle_not_found(history, "Case history")
