@@ -159,7 +159,71 @@ class AnalyticsService:
             "total_violations_all_years": total_violations_all_years
         }
 
+    def get_geodata_analytics(
+        self,
+        violation_type: Optional[str] = None,
+        country: Optional[str] = None
+    ) -> Dict[str, Any]:
 
+        
+        match_filters = {}
+        
+        if country:
+            match_filters["incident_details.location.country"] = country
+        
+        if violation_type:
+            match_filters["incident_details.violation_types"] = violation_type
+        
+        pipeline = [
+            {"$match": match_filters},
+            {
+                "$group": {
+                    "_id": {
+                        "country": "$incident_details.location.country",
+                        "city": "$incident_details.location.city",
+                        "coordinates": "$incident_details.location.coordinates.coordinates"
+                    },
+                    "incident_count": {"$sum": 1},
+                    "violation_types": {"$addToSet": {"$arrayElemAt": ["$incident_details.violation_types", 0]}}
+                }
+            },
+            {
+                "$match": {
+                    "_id.coordinates": {"$exists": True, "$ne": None},
+                    "_id.country": {"$exists": True, "$ne": None},
+                    "_id.city": {"$exists": True, "$ne": None}
+                }
+            },
+            {"$sort": {"incident_count": -1}}
+        ]
+        
+        result = list(self.reports_collection.aggregate(pipeline))
+        
+        geodata_points = []
+        
+        for item in result:
+            try:
+                coordinates = item["_id"]["coordinates"]
+                if coordinates and len(coordinates) >= 2:
+                    geodata_point = GeographicDataPoint(
+                        location={
+                            "lat": coordinates[1],  # latitude
+                            "lng": coordinates[0]   # longitude
+                        },
+                        region=item["_id"].get("city", "Unknown"),
+                        country=item["_id"]["country"],
+                        incident_count=item["incident_count"],
+                        violation_types=item["violation_types"]
+                    )
+                    geodata_points.append(geodata_point)
+            except (KeyError, IndexError, TypeError):
+                continue
+        
+        return {
+            "data": geodata_points,
+            "total_locations": len(geodata_points)
+        }
+        
     def get_violations_analytics(
         self,
         date_from: Optional[datetime] = None,
@@ -208,7 +272,8 @@ class AnalyticsService:
         except Exception as e:
             logger.error(f"Error in violations analytics: {str(e)}")
             raise    
-
+        
+    
     def _build_date_location_filters(
         self, 
         date_from: Optional[datetime] = None,

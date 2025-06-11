@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, status as HTTPStatus, Depends
+from fastapi import APIRouter, HTTPException, status as HTTPStatus, Depends, Query
 from datetime import datetime
+from typing import Optional
 from services.analytics_service import AnalyticsService
 from schemas.analytics_schema import (
     AnalyticsFilters, ReportGenerationRequest,
@@ -133,4 +134,29 @@ async def get_timeline_analytics(
         raise HTTPException(
             status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while fetching timeline analytics"
+        )
+
+@router.get("/geodata", response_model=GeodataResponse)
+async def get_geodata_analytics(
+    violation_type: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    analytics_service: AnalyticsService = Depends(get_analytics_service)
+):
+    try:
+        data = analytics_service.get_geodata_analytics(
+            violation_type=violation_type,
+            country=country
+        )
+        return data
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching geodata analytics"
         )
